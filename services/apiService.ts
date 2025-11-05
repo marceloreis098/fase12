@@ -8,7 +8,7 @@ const handleResponse = async (response: Response) => {
     return response.json();
 };
 
-const getApiBaseUrl = () => `http://${window.location.hostname}:3001/api`;
+const getApiBaseUrl = () => `https://${window.location.hostname}:3001/api`;
 
 const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     const headers = {

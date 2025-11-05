@@ -35,7 +35,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, isSsoEnabled }) => {
   
   const handleSsoLogin = () => {
     // Redirect to the backend which will construct the SAML request and redirect to the IdP
-    window.location.href = `http://${window.location.hostname}:3001/api/sso/login`;
+    window.location.href = `https://${window.location.hostname}:3001/api/sso/login`;
   };
 
   return (

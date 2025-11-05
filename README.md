@@ -9,8 +9,8 @@ A aplicação é dividida em dois componentes principais dentro do mesmo reposit
 ```
 /var/www/Inventario/
 ├── inventario-api/         <-- Backend (API Node.js)
+│   ├── certs/              <-- Certificados SSL (gerados)
 │   ├── node_modules/
-│   ├── mockData.js
 │   ├── package.json
 │   └── server.js
 │
@@ -81,8 +81,8 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
 1.  **Adicione as Regras e Habilite:**
     ```bash
     sudo ufw allow ssh          # Permite acesso SSH
-    sudo ufw allow 3000/tcp     # Permite acesso ao Frontend
-    sudo ufw allow 3001/tcp     # Permite acesso à API
+    sudo ufw allow 3000/tcp     # Permite acesso ao Frontend (HTTPS)
+    sudo ufw allow 3001/tcp     # Permite acesso à API (HTTPS)
     sudo ufw enable
     ```
 
@@ -119,6 +119,14 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     BCRYPT_SALT_ROUNDS=10
     ```
 
+4.  **Habilite o HTTPS (Recomendado):**
+    A API está configurada para rodar em HTTPS se encontrar os certificados. Gere um certificado autoassinado para o ambiente de desenvolvimento/interno:
+    ```bash
+    # Certifique-se de estar em /var/www/Inventario/inventario-api
+    npm run generate-certs
+    ```
+    Isso criará uma pasta `certs` com os arquivos `key.pem` e `cert.pem`. A API irá usá-los automaticamente ao iniciar.
+
 ### Passo 4: Configuração do Frontend
 
 1.  **Instale `serve` e `pm2` globalmente:**
@@ -151,15 +159,16 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     npx pm2 start server.js --name inventario-api
     ```
 
-2.  **Inicie o Frontend com o PM2:**
-    **Atenção:** O comando abaixo deve ser executado da pasta raiz do projeto.
+2.  **Inicie o Frontend com o PM2 (com HTTPS):**
+    Execute o comando da pasta raiz do projeto (`/var/www/Inventario`).
     ```bash
     # Navegue para a pasta raiz do projeto
     cd /var/www/Inventario
     
-    # O comando serve o conteúdo da pasta de produção 'dist' na porta 3000.
-    npx pm2 start serve --name inventario-frontend -- -s dist -l 3000
+    # O comando serve o conteúdo da pasta 'dist' na porta 3000 com HTTPS.
+    npx pm2 start serve --name inventario-frontend -- -s dist -l 3000 --ssl-cert inventario-api/certs/cert.pem --ssl-key inventario-api/certs/key.pem
     ```
+    **Nota:** O frontend usará os mesmos certificados gerados para o backend.
 
 3.  **Configure o PM2 para Iniciar com o Servidor:**
     ```bash
@@ -181,7 +190,9 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
 
 ### Passo 6: Acesso à Aplicação
 
-Abra o navegador no endereço do seu servidor Ubuntu, na porta do frontend: `http://<ip-do-servidor>:3000`.
+Abra o navegador no endereço do seu servidor Ubuntu, na porta do frontend: `https://<ip-do-servidor>:3000`.
+
+**Aviso:** Como estamos usando um certificado autoassinado, seu navegador exibirá um alerta de segurança. Você precisará aceitar o risco para continuar. Para um ambiente de produção real, é recomendado usar certificados de uma Autoridade Certificadora (CA) confiável.
 
 A aplicação deve carregar a tela de login. Use as credenciais `admin` / `marceloadmin` para acessar o sistema.
 

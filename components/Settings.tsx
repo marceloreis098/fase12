@@ -336,7 +336,7 @@ const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
         }
     };
 
-    const acsUrl = `http://${window.location.hostname}:3001/api/sso/callback`;
+    const acsUrl = `https://${window.location.hostname}:3001/api/sso/callback`;
     const entityId = window.location.origin;
 
     const settingsTabs = [

@@ -4,7 +4,8 @@
   "description": "Backend API for Inventario Pro",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "generate-certs": "mkdir -p certs && openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj \"/C=BR/ST=SaoPaulo/L=SaoPaulo/O=InventarioPro/CN=localhost\""
   },
   "author": "",
   "license": "ISC",

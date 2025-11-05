@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const https = require('https');
 const mysql = require('mysql2');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -380,8 +381,8 @@ app.get('/api/sso/login', async (req, res) => {
         }
         
         const frontendHost = req.hostname;
-        const acsUrl = `http://${frontendHost}:3001/api/sso/callback`;
-        const entityId = settings.ssoEntityId || `http://${frontendHost}:3000`;
+        const acsUrl = `https://${frontendHost}:3001/api/sso/callback`;
+        const entityId = settings.ssoEntityId || `https://${frontendHost}:3000`;
         const requestId = '_' + crypto.randomBytes(20).toString('hex');
         const issueInstant = new Date().toISOString();
 
@@ -419,7 +420,7 @@ app.post('/api/sso/callback', (req, res) => {
     // This is a placeholder for handling the SAML response from the IdP
     // A real implementation would require a SAML library to parse and verify the response.
     console.log('Received SAML Response:', req.body.SAMLResponse);
-    res.redirect(`http://${req.hostname}:3000?sso_token=dummy_token_for_now`);
+    res.redirect(`https://${req.hostname}:3000?sso_token=dummy_token_for_now`);
 });
 
 // POST /api/verify-2fa
@@ -1102,11 +1103,31 @@ app.post('/api/database/clear', isAdmin, async (req, res) => {
 const startServer = async () => {
     try {
         await runMigrations();
-        app.listen(PORT, () => {
-            console.log(`Server running on port ${PORT}`);
-        });
+
+        const keyPath = path.join(__dirname, 'certs/key.pem');
+        const certPath = path.join(__dirname, 'certs/cert.pem');
+
+        if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+            const httpsOptions = {
+                key: fs.readFileSync(keyPath),
+                cert: fs.readFileSync(certPath)
+            };
+            https.createServer(httpsOptions, app).listen(PORT, () => {
+                console.log(`Server HTTPS em execução na porta ${PORT}`);
+            });
+        } else {
+            console.warn("*********************************************************************");
+            console.warn("AVISO: Certificados SSL não encontrados na pasta './certs'.");
+            console.warn("Iniciando servidor em HTTP. Para usar HTTPS, execute o comando:");
+            console.warn("npm run generate-certs");
+            console.warn("dentro da pasta 'inventario-api'.");
+            console.warn("*********************************************************************");
+            app.listen(PORT, () => {
+                console.log(`Server HTTP em execução na porta ${PORT}`);
+            });
+        }
     } catch (err) {
-        console.error("Failed to start server due to migration errors:", err);
+        console.error("Falha ao iniciar o servidor devido a erros de migração:", err);
         process.exit(1);
     }
 };
