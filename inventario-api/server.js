@@ -1099,21 +1099,57 @@ app.post('/api/database/clear', isAdmin, async (req, res) => {
 
 // --- SERVE FRONTEND ---
 const frontendDistPath = path.resolve(__dirname, '../dist');
-if (fs.existsSync(frontendDistPath)) {
-    app.use(express.static(frontendDistPath));
 
-    // For any route not starting with /api, serve the frontend's index.html
-    // This is crucial for Single Page Application routing to work correctly.
-    app.get(/^(?!\/api).*/, (req, res) => {
-        res.sendFile(path.join(frontendDistPath, 'index.html'));
-    });
-} else {
-    console.warn("*********************************************************************");
-    console.warn("AVISO: Pasta 'dist' do frontend não encontrada.");
-    console.warn("O servidor de API está rodando, mas o frontend não será servido.");
-    console.warn("Execute 'npm run build' na pasta raiz do projeto para compilar o frontend.");
-    console.warn("*********************************************************************");
-}
+// Serve static assets from the 'dist' directory
+app.use(express.static(frontendDistPath));
+
+// For any route not handled by the static middleware or API routes,
+// send the frontend's index.html file. This is the catch-all for SPA routing.
+app.get(/^(?!\/api).*/, (req, res) => {
+    const indexPath = path.join(frontendDistPath, 'index.html');
+    
+    // Check if the frontend has been built
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        // If not built, send a helpful error message
+        res.status(404).send(`
+            <!DOCTYPE html>
+            <html lang="pt-BR">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Erro de Configuração</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #333; margin: 2em; line-height: 1.6; }
+                    .container { max-width: 800px; margin: auto; padding: 2em; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                    h1 { color: #d9534f; border-bottom: 2px solid #eee; padding-bottom: 0.5em; }
+                    code { background: #e8e8e8; padding: 3px 6px; border-radius: 4px; font-family: "Courier New", Courier, monospace; }
+                    ol { padding-left: 20px; }
+                    li { margin-bottom: 0.5em; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Erro 404: Interface não encontrada</h1>
+                    <p>O servidor da API está funcionando, mas o arquivo principal da interface (<code>index.html</code>) não foi encontrado no local esperado.</p>
+                    <p>Isso geralmente significa que a compilação do frontend não foi executada ou falhou.</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 1.5em 0;">
+                    <h3>Como resolver:</h3>
+                    <ol>
+                        <li>Acesse o servidor via SSH.</li>
+                        <li>Navegue até o diretório raiz da aplicação: <code>cd /var/www/Inventario</code></li>
+                        <li>Execute o comando de compilação: <code>npm run build</code></li>
+                        <li>Reinicie a aplicação para que as alterações tenham efeito: <code>npx pm2 restart inventario-app</code></li>
+                    </ol>
+                    <p>Após seguir estes passos, a aplicação deve carregar corretamente.</p>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+});
+
 
 // --- SERVER STARTUP ---
 const startServer = async () => {
