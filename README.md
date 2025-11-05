@@ -204,7 +204,7 @@ Abra o navegador no endereço do seu servidor. Graças ao redirecionamento de po
 
 **Aviso:** Como estamos usando um certificado autoassinado, seu navegador exibirá um alerta de segurança. Você precisará aceitar o risco para continuar.
 
-A aplicação deve carregar a tela de login. Use as credenciais `admin` / `marceloadmin` para acessar.
+A aplicação deve carregar a tela de login. Use as credenciais de administrador padrão para acessar. É altamente recomendável alterar a senha padrão no primeiro login.
 
 ---
 
