@@ -10,6 +10,7 @@ import AuditLog from './components/AuditLog';
 import Login from './components/Login';
 import TwoFactorAuth from './components/TwoFactorAuth';
 import TwoFactorSetup from './components/TwoFactorSetup'; // Novo componente
+import AIAssistantWidget from './components/AIAssistantWidget';
 import { Page, User, UserRole } from './types';
 import { getSettings } from './services/apiService';
 
@@ -180,8 +181,7 @@ const App: React.FC = () => {
           {renderPage()}
         </main>
       </div>
-      {/* AIAssistantWidget removido conforme solicitado pelo usuário */}
-      {/* <AIAssistantWidget currentUser={currentUser} /> */}
+      <AIAssistantWidget currentUser={currentUser} />
     </div>
   );
 };
