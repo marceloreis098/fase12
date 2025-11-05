@@ -308,7 +308,7 @@ const isAdmin = async (req, res, next) => {
 
 // --- API ENDPOINTS ---
 
-// GET / - Health Check
+// GET /api/ - Health Check
 app.get('/api', (req, res) => {
     res.json({ message: "Inventario Pro API is running!" });
 });
@@ -380,9 +380,8 @@ app.get('/api/sso/login', async (req, res) => {
             return res.status(400).send('<h1>Erro de Configuração</h1><p>O Login SSO não está habilitado ou a URL do SSO não foi configurada. Por favor, contate o administrador.</p>');
         }
         
-        const frontendHost = req.hostname;
-        const acsUrl = `https://${frontendHost}:3001/api/sso/callback`;
-        const entityId = settings.ssoEntityId || `https://${frontendHost}:3000`;
+        const acsUrl = `https://${req.get('host')}/api/sso/callback`;
+        const entityId = settings.ssoEntityId || `https://${req.get('host')}`;
         const requestId = '_' + crypto.randomBytes(20).toString('hex');
         const issueInstant = new Date().toISOString();
 
@@ -420,7 +419,7 @@ app.post('/api/sso/callback', (req, res) => {
     // This is a placeholder for handling the SAML response from the IdP
     // A real implementation would require a SAML library to parse and verify the response.
     console.log('Received SAML Response:', req.body.SAMLResponse);
-    res.redirect(`https://${req.hostname}:3000?sso_token=dummy_token_for_now`);
+    res.redirect(`https://://${req.get('host')}?sso_token=dummy_token_for_now`);
 });
 
 // POST /api/verify-2fa
@@ -1098,6 +1097,23 @@ app.post('/api/database/clear', isAdmin, async (req, res) => {
     }
 });
 
+// --- SERVE FRONTEND ---
+const frontendDistPath = path.resolve(__dirname, '../dist');
+if (fs.existsSync(frontendDistPath)) {
+    app.use(express.static(frontendDistPath));
+
+    // For any route not starting with /api, serve the frontend's index.html
+    // This is crucial for Single Page Application routing to work correctly.
+    app.get(/^(?!\/api).*/, (req, res) => {
+        res.sendFile(path.join(frontendDistPath, 'index.html'));
+    });
+} else {
+    console.warn("*********************************************************************");
+    console.warn("AVISO: Pasta 'dist' do frontend não encontrada.");
+    console.warn("O servidor de API está rodando, mas o frontend não será servido.");
+    console.warn("Execute 'npm run build' na pasta raiz do projeto para compilar o frontend.");
+    console.warn("*********************************************************************");
+}
 
 // --- SERVER STARTUP ---
 const startServer = async () => {
@@ -1113,7 +1129,7 @@ const startServer = async () => {
                 cert: fs.readFileSync(certPath)
             };
             https.createServer(httpsOptions, app).listen(PORT, () => {
-                console.log(`Server HTTPS em execução na porta ${PORT}`);
+                console.log(`Server HTTPS unificado (API + Frontend) em execução na porta ${PORT}`);
             });
         } else {
             console.warn("*********************************************************************");
@@ -1123,7 +1139,7 @@ const startServer = async () => {
             console.warn("dentro da pasta 'inventario-api'.");
             console.warn("*********************************************************************");
             app.listen(PORT, () => {
-                console.log(`Server HTTP em execução na porta ${PORT}`);
+                console.log(`Server HTTP unificado (API + Frontend) em execução na porta ${PORT}`);
             });
         }
     } catch (err) {

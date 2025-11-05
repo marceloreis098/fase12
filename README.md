@@ -1,23 +1,21 @@
 # Gerenciador de Inventário Pro
 
-Este é um guia completo para a instalação e configuração do sistema Gerenciador de Inventário Pro em um ambiente de produção interno. A aplicação utiliza uma arquitetura full-stack com um frontend em React, um backend em Node.js (Express) e um banco de dados MariaDB rodando em um servidor Ubuntu.
+Este é um guia completo para a instalação e configuração do sistema Gerenciador de Inventário Pro em um ambiente de produção interno. A aplicação utiliza uma arquitetura full-stack com um frontend em React e um backend em Node.js (Express) que serve tanto a API quanto a interface do usuário, utilizando um banco de dados MariaDB em um servidor Ubuntu.
 
 ## Arquitetura
 
-A aplicação é dividida em dois componentes principais dentro do mesmo repositório. Para evitar qualquer confusão, aqui está a estrutura de diretórios do projeto:
+A aplicação é dividida em dois componentes principais dentro do mesmo repositório, mas é executada como um único serviço.
 
 ```
 /var/www/Inventario/
-├── inventario-api/         <-- Backend (API Node.js)
+├── inventario-api/         <-- Backend (API Node.js e servidor web)
 │   ├── certs/              <-- Certificados SSL (gerados)
 │   ├── node_modules/
 │   ├── package.json
-│   └── server.js
+│   └── server.js           <-- Ponto de entrada principal
 │
 ├── node_modules/           <-- Dependências do Frontend
-├── dist/                   <-- Pasta de produção do Frontend (criada após o build)
-├── components/
-├── services/
+├── dist/                   <-- Pasta de produção do Frontend (servida pelo backend)
 ├── index.html              <-- Arquivos do Frontend (React)
 ├── package.json
 └── ... (outros arquivos do frontend)
@@ -25,8 +23,8 @@ A aplicação é dividida em dois componentes principais dentro do mesmo reposit
 
 **Componentes:**
 
-1.  **Frontend (Diretório Raiz: `/var/www/Inventario`)**: Uma aplicação React (Vite + TypeScript) responsável pela interface do usuário. **Todos os comandos do frontend devem ser executados a partir daqui.**
-2.  **Backend (Pasta `inventario-api`)**: Um servidor Node.js/Express que recebe as requisições do frontend, aplica a lógica de negócio e se comunica com o banco de dados. **Todos os comandos do backend devem ser executados a partir de `Inventario/inventario-api/`.**
+1.  **Frontend (Diretório Raiz: `/var/www/Inventario`)**: Uma aplicação React (Vite + TypeScript) responsável pela interface do usuário. Seus arquivos estáticos são compilados para a pasta `dist`.
+2.  **Backend (Pasta `inventario-api`)**: Um servidor Node.js/Express que serve a API em `/api/*` e todos os arquivos do frontend. Este é o único processo que precisa ser executado.
 
 ---
 
@@ -36,10 +34,7 @@ Siga estes passos para configurar e executar a aplicação.
 
 ### Passo 0: Obtendo os Arquivos da Aplicação com Git
 
-Antes de configurar o banco de dados ou o servidor, você precisa obter os arquivos da aplicação no seu servidor.
-
 1.  **Crie o Diretório de Trabalho (se não existir):**
-    O diretório `/var/www` é a convenção para hospedar aplicações web.
     ```bash
     sudo mkdir -p /var/www
     sudo chown -R $USER:$USER /var/www
@@ -51,12 +46,10 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     ```
 
 3.  **Clone o Repositório da Aplicação:**
-    Navegue até o diretório preparado e clone o repositório. **Substitua a URL abaixo pela URL real do seu repositório Git.**
     ```bash
     cd /var/www/
     git clone https://github.com/marceloreis098/teste4.git Inventario
     ```
-    Isso criará a pasta `Inventario` com todos os arquivos do projeto.
 
 ### Passo 1: Configuração do Banco de Dados (MariaDB)
 
@@ -67,7 +60,7 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     ```
 
 2.  **Crie o Banco de Dados e o Usuário:**
-    Acesse o console do MariaDB com o usuário root (`sudo mysql -u root -p`). Execute os comandos SQL a seguir. **Substitua `'sua_senha_forte'` por uma senha segura.**
+    Acesse o console do MariaDB (`sudo mysql -u root -p`) e execute os comandos a seguir, substituindo `'sua_senha_forte'` por uma senha segura.
     ```sql
     CREATE DATABASE inventario_pro CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     CREATE USER 'inventario_user'@'localhost' IDENTIFIED BY 'sua_senha_forte';
@@ -78,38 +71,69 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     
 ### Passo 2: Configuração do Firewall (UFW)
 
+Vamos permitir o tráfego na porta padrão HTTPS (443) e SSH.
+
 1.  **Adicione as Regras e Habilite:**
     ```bash
     sudo ufw allow ssh          # Permite acesso SSH
-    sudo ufw allow 3000/tcp     # Permite acesso ao Frontend (HTTPS)
-    sudo ufw allow 3001/tcp     # Permite acesso à API (HTTPS)
+    sudo ufw allow 443/tcp      # Permite acesso à aplicação via HTTPS
     sudo ufw enable
     ```
 
-### Passo 3: Configuração do Backend (API)
+### Passo 3: Redirecionamento de Porta (443 para 3001)
 
-1.  **Instale o Node.js (se não tiver):**
+Para acessar a aplicação em `https://<ip-do-servidor>` sem especificar a porta, precisamos redirecionar o tráfego da porta padrão HTTPS (443) para a porta onde a aplicação está rodando (3001). Isso evita a necessidade de executar o processo Node.js com privilégios de superusuário, o que é uma boa prática de segurança.
+
+1.  **Habilite o Redirecionamento no UFW:**
+    Edite o arquivo de configuração principal do UFW.
+    ```bash
+    sudo nano /etc/default/ufw
+    ```
+    Altere a linha `DEFAULT_FORWARD_POLICY="DROP"` para `DEFAULT_FORWARD_POLICY="ACCEPT"`. Salve e feche o arquivo (Ctrl+X, Y, Enter).
+
+2.  **Adicione as Regras de Redirecionamento:**
+    Edite o arquivo de regras do UFW que é lido antes das regras principais.
+    ```bash
+    sudo nano /etc/ufw/before.rules
+    ```
+    Adicione o seguinte bloco de código no **topo do arquivo**, antes da linha `*filter`.
+    ```
+    # Port forwarding rule for HTTPS -> 3001
+    *nat
+    :PREROUTING ACCEPT [0:0]
+    -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3001
+    COMMIT
+    ```
+    Salve e feche o arquivo.
+
+3.  **Recarregue o Firewall para Aplicar as Mudanças:**
+    ```bash
+    sudo ufw disable
+    sudo ufw enable
+    ```
+    O firewall será recarregado com as novas regras de redirecionamento.
+
+### Passo 4: Configuração do Backend (Servidor Unificado)
+
+1.  **Instale o Node.js e o PM2:**
     ```bash
     curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
     sudo apt-get install -y nodejs
+    sudo npm install -g pm2
     ```
 
 2.  **Instale as Dependências da API:**
     ```bash
-    # Navegue até a pasta da API
     cd /var/www/Inventario/inventario-api
-    
-    # Instale as dependências (incluindo otplib, bcryptjs e mysql2)
     npm install
     ```
-    **Nota:** O servidor da API irá criar as tabelas necessárias no banco de dados automaticamente na primeira vez que for iniciado.
 
 3.  **Crie o Arquivo de Variáveis de Ambiente (`.env`):**
     ```bash
     # Certifique-se de estar em /var/www/Inventario/inventario-api
     nano .env
     ```
-    Adicione o seguinte conteúdo, usando a senha que você definiu:
+    Adicione o seguinte conteúdo. A porta `3001` é a porta interna onde a aplicação vai rodar.
     ```
     DB_HOST=localhost
     DB_USER=inventario_user
@@ -119,218 +143,100 @@ Antes de configurar o banco de dados ou o servidor, você precisa obter os arqui
     BCRYPT_SALT_ROUNDS=10
     ```
 
-4.  **Habilite o HTTPS (Recomendado):**
-    A API está configurada para rodar em HTTPS se encontrar os certificados. Gere um certificado autoassinado para o ambiente de desenvolvimento/interno:
+4.  **Habilite o HTTPS:**
+    Gere um certificado autoassinado para o servidor.
     ```bash
     # Certifique-se de estar em /var/www/Inventario/inventario-api
     npm run generate-certs
     ```
-    Isso criará uma pasta `certs` com os arquivos `key.pem` e `cert.pem`. A API irá usá-los automaticamente ao iniciar.
+    Isso criará uma pasta `certs` que o servidor usará automaticamente.
 
-### Passo 4: Configuração do Frontend
+### Passo 5: Configuração do Frontend
 
-1.  **Instale `serve` e `pm2` globalmente:**
-    ```bash
-    sudo npm install -g serve pm2
-    ```
-
-2.  **Instale as Dependências do Frontend:**
+1.  **Instale as Dependências do Frontend:**
     ```bash
     # Navegue até a pasta raiz do projeto
     cd /var/www/Inventario
     npm install 
     ```
 
-3.  **Compile a Aplicação para Produção:**
-    Este passo é crucial. Ele cria uma pasta `dist` com a versão otimizada do site.
+2.  **Compile a Aplicação para Produção:**
+    Este passo cria a pasta `dist` que será servida pelo backend.
     ```bash
     # Certifique-se de estar em /var/www/Inventario
     npm run build
     ```
 
-### Passo 5: Executando a Aplicação com PM2
+### Passo 6: Executando a Aplicação Unificada com PM2
 
-`pm2` irá garantir que a API e o frontend rodem continuamente. Usamos `npx` para garantir que o comando `pm2` seja encontrado.
+Agora, precisamos de apenas um processo `pm2` para rodar toda a aplicação.
 
-1.  **Inicie a API com o PM2:**
+1.  **Inicie o Servidor com o PM2:**
     ```bash
     # Navegue para a pasta da API
     cd /var/www/Inventario/inventario-api
-    npx pm2 start server.js --name inventario-api
-    ```
-
-2.  **Inicie o Frontend com o PM2 (com HTTPS):**
-    Execute o comando da pasta raiz do projeto (`/var/www/Inventario`).
-    ```bash
-    # Navegue para a pasta raiz do projeto
-    cd /var/www/Inventario
     
-    # O comando serve o conteúdo da pasta 'dist' na porta 3000 com HTTPS.
-    npx pm2 start serve --name inventario-frontend -- -s dist -l 3000 --ssl-cert inventario-api/certs/cert.pem --ssl-key inventario-api/certs/key.pem
+    # Inicia o servidor que serve tanto a API quanto o frontend
+    npx pm2 start server.js --name inventario-app
     ```
-    **Nota:** O frontend usará os mesmos certificados gerados para o backend.
 
-3.  **Configure o PM2 para Iniciar com o Servidor:**
+2.  **Configure o PM2 para Iniciar com o Servidor:**
     ```bash
     npx pm2 startup
     ```
-    O comando acima irá gerar um outro comando que você precisa copiar e executar. **Execute o comando que ele fornecer.**
+    O comando acima irá gerar um outro comando que você precisa copiar e executar.
 
-4.  **Salve a Configuração de Processos do PM2:**
+3.  **Salve a Configuração de Processos do PM2:**
     ```bash
     npx pm2 save
     ```
 
-5.  **Gerencie os Processos:**
+4.  **Gerencie o Processo:**
     -   Ver status: `npx pm2 list`
-    -   Ver logs da API: `npx pm2 logs inventario-api`
-    -   Ver logs do Frontend: `npx pm2 logs inventario-frontend`
-    -   Reiniciar a API: `npx pm2 restart inventario-api`
-    -   Reiniciar o Frontend: `npx pm2 restart inventario-frontend`
+    -   Ver logs: `npx pm2 logs inventario-app`
+    -   Reiniciar: `npx pm2 restart inventario-app`
 
-### Passo 6: Acesso à Aplicação
+### Passo 7: Acesso à Aplicação
 
-Abra o navegador no endereço do seu servidor Ubuntu, na porta do frontend: `https://<ip-do-servidor>:3000`.
+Abra o navegador no endereço do seu servidor. Graças ao redirecionamento de porta, não é necessário especificar a porta.
 
-**Aviso:** Como estamos usando um certificado autoassinado, seu navegador exibirá um alerta de segurança. Você precisará aceitar o risco para continuar. Para um ambiente de produção real, é recomendado usar certificados de uma Autoridade Certificadora (CA) confiável.
+`https://<ip-do-servidor>`
 
-A aplicação deve carregar a tela de login. Use as credenciais `admin` / `marceloadmin` para acessar o sistema.
+**Aviso:** Como estamos usando um certificado autoassinado, seu navegador exibirá um alerta de segurança. Você precisará aceitar o risco para continuar.
+
+A aplicação deve carregar a tela de login. Use as credenciais `admin` / `marceloadmin` para acessar.
 
 ---
 
-## Configuração Adicional
+## Atualizando a Aplicação com Git
 
-### Garantindo a Inicialização Automática
+Para atualizar a aplicação, o processo é semelhante, mas agora mais simples.
 
-Para garantir que tanto o frontend quanto o backend iniciem automaticamente sempre que o servidor for reiniciado, siga estes passos. Este processo utiliza o `pm2` para registrar as aplicações como um serviço do sistema.
-
-**Pré-requisito:** Certifique-se de que seus processos (`inventario-api` e `inventario-frontend`) já foram iniciados pelo menos uma vez com o `pm2`, conforme o Passo 5. Você pode verificar com `npx pm2 list`.
-
-#### 1. Gerar o Script de Inicialização
-
-Execute o seguinte comando. O `pm2` irá detectar seu sistema operacional e gerar um comando específico para configurar o serviço de inicialização.
-
-```bash
-npx pm2 startup
-```
-
-A saída será algo como:
-
-```
-[PM2] To setup the Startup Script, copy/paste the following command:
-sudo env PATH=$PATH:/usr/bin /.../pm2 startup systemd -u <seu_usuario> --hp /home/<seu_usuario>
-```
-
-#### 2. Executar o Comando Gerado
-
-**Copie e cole o comando exato** que foi exibido no seu terminal. É fundamental executar este comando com `sudo` (se for o caso) para que o `pm2` tenha as permissões necessárias para criar o serviço.
-
-#### 3. Salvar a Lista de Processos
-
-Após executar o comando anterior, salve a lista de processos que o `pm2` deve gerenciar. Isso fará com que o `pm2` "lembre" quais aplicações iniciar no boot.
-
-```bash
-npx pm2 save
-```
-
-Pronto! Agora, sempre que o servidor for reiniciado, o `pm2` será iniciado automaticamente e, em seguida, iniciará a `inventario-api` e o `inventario-frontend`.
-
-**Para testar:** Você pode reiniciar o servidor (`sudo reboot`) e, após o reinício, verificar o status com `npx pm2 list`. Ambos os processos devem estar com o status `online`.
-
-### Atualizando a Aplicação com Git
-
-Para atualizar a aplicação com as últimas alterações do repositório, siga estes passos.
-
-#### 1. Baixar as Atualizações
-
-Primeiro, navegue até a pasta raiz do projeto e use o `git` para baixar as novidades.
-
-```bash
-# Navegue para a pasta raiz
-cd /var/www/Inventario
-
-# Baixe as atualizações do repositório (branch 'main' ou 'master')
-git pull origin main
-```
-
-#### 2. Aplicar as Mudanças
-
-Após baixar os arquivos, pode ser necessário reinstalar dependências (se o `package.json` mudou) e reconstruir o frontend.
-
-**Para o Backend (API):**
-
-```bash
-# Navegue para a pasta da API
-cd /var/www/Inventario/inventario-api
-
-# Instale quaisquer novas dependências
-npm install
-
-# Reinicie la aplicação com pm2 para aplicar as mudanças
-npx pm2 restart inventario-api
-```
-
-**Para o Frontend:**
-
-```bash
-# Navegue para a pasta raiz do projeto
-cd /var/www/Inventario
-
-# Instale quaisquer novas dependências
-npm install
-
-# Recompile os arquivos do frontend
-npm run build
-
-# Reinicie o servidor do frontend com pm2
-npx pm2 restart inventario-frontend
-```
-
-Após esses passos, sua aplicação estará atualizada e rodando com a versão mais recente. Verifique os logs com `npx pm2 logs` se encontrar algum problema.
-
-**Substituindo o Repositório Git Remoto (Origem)**
-
-Caso seja necessário alterar o repositório de onde as atualizações são baixadas (por exemplo, ao migrar o projeto para um novo serviço Git), siga os passos abaixo.
-
-1.  **Navegue até a Pasta do Projeto:**
+1.  **Baixar as Atualizações:**
     ```bash
     cd /var/www/Inventario
+    git pull origin main
     ```
 
-2.  **Verifique o Remoto Atual:**
-    Este comando mostrará a URL atual para a qual o `origin` aponta.
+2.  **Aplicar as Mudanças:**
     ```bash
-    git remote -v
-    ```
-
-3.  **Altere a URL do Remoto:**
-    Substitua `URL_DO_NOVO_REPOSITORIO` pela nova URL do seu repositório Git.
-    ```bash
-    git remote set-url origin URL_DO_NOVO_REPOSITORIO
-    ```
-
-4.  **Verifique a Alteração:**
-    Execute novamente para confirmar que a URL foi atualizada.
-    ```bash
-    git remote -v
-    ```
-
-5.  **Baixe as Informações do Novo Repositório:**
-    ```bash
-    git fetch origin
-    ```
+    # Instale dependências do backend (se houver)
+    cd /var/www/Inventario/inventario-api
+    npm install
     
-6.  **Sincronize sua Cópia Local (Opcional, mas recomendado):**
-    Se você deseja que sua cópia local seja um espelho exato do novo repositório, **cuidado, pois isso descartará quaisquer alterações locais não salvas**.
-    ```bash
-    # Substitua 'main' pelo nome do branch principal, se for diferente (ex: 'master')
-    git reset --hard origin/main 
+    # Instale dependências e recompile o frontend
+    cd /var/www/Inventario
+    npm install
+    npm run build
+    
+    # Reinicie o único processo da aplicação
+    npx pm2 restart inventario-app
     ```
-
-Após esses passos, o comando `git pull origin main` passará a buscar atualizações do novo repositório.
 ---
 
 ## Configuração da API do Gemini
+
+(Esta seção permanece a mesma)
 
 Para habilitar as funcionalidades de Inteligência Artificial do sistema, como o assistente de relatórios, é necessário configurar uma chave de API do Google Gemini.
 
@@ -363,11 +269,10 @@ A chave deve ser adicionada como uma variável de ambiente no servidor para gara
 
 ### 3. Reinicie a API
 
-Para que a nova variável de ambiente seja carregada, reinicie o processo da API usando o PM2:
+Para que a nova variável de ambiente seja carregada, reinicie o processo da aplicação usando o PM2:
 
 ```bash
-# Estando na pasta /var/www/Inventario/inventario-api
-npx pm2 restart inventario-api
+npx pm2 restart inventario-app
 ```
 
 Após esses passos, a integração com o Gemini estará ativa.

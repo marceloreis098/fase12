@@ -8,7 +8,7 @@ const handleResponse = async (response: Response) => {
     return response.json();
 };
 
-const getApiBaseUrl = () => `https://${window.location.hostname}:3001/api`;
+const getApiBaseUrl = () => `/api`;
 
 const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
     const headers = {
@@ -28,7 +28,7 @@ export const checkApiStatus = async (): Promise<{ ok: boolean, message?: string 
         await response.json();
         return { ok: true };
     } catch (error: any) {
-        return { ok: false, message: 'Falha ao conectar com a API. Verifique se o servidor backend (na porta 3001) está em execução e se o firewall permite a conexão.' };
+        return { ok: false, message: 'Falha ao conectar com a API. Verifique se o servidor backend está em execução e se o firewall permite a conexão.' };
     }
 };
 
